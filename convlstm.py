@@ -1,7 +1,7 @@
 import torch.nn as nn
 import torch
 import numpy as np
-
+import math
 class ConvLSTMCell(nn.Module):
 
     def __init__(self, input_dim, hidden_dim, kernel_size, bias):
@@ -116,8 +116,13 @@ class ConvLSTM(nn.Module):
                                           bias=self.bias))
 
         self.cell_list = nn.ModuleList(cell_list)
-        self.linear = nn.Linear(1, 1)
-    
+        #self.linear = nn.Linear(1, 1)
+        #self.conv =nn.Conv2d(in_channels=1,
+        #                      out_channels=1,
+        #                      kernel_size=1,
+        #                      padding=0,
+        #                      bias=True)
+
     def forward(self, input_tensor, hidden_state=None):
         """
 
@@ -135,6 +140,7 @@ class ConvLSTM(nn.Module):
         if not self.batch_first:
             # (t, b, c, h, w) -> (b, t, c, h, w)
             input_tensor = input_tensor.permute(1, 0, 2, 3, 4)
+            print(input_tensor.size())
 
         b, _, _, h, w = input_tensor.size()
         print("batch is:", b)
@@ -170,16 +176,34 @@ class ConvLSTM(nn.Module):
         if not self.return_all_layers:
             layer_output_list = layer_output_list[-1:]
             last_state_list = last_state_list[-1:]
+        #! 此处尝试补充卷积层用以生成mask
+        # last_layer_out = layer_output_list[0][:, -1,...]
+        last_layer_out = last_state_list[0][0]
+        print("last_layer_out shape is:", last_layer_out.shape)
+        # convmask =  (last_layer_out >last_layer_out.mean() if last_layer_out.mean()>=0.1 else last_layer_out>0.1).type(last_layer_out.dtype)
+        # last_layer_out = torch.pow(math.e, ((last_layer_out *90) -40.695)/16)
+        convmask =  (last_layer_out >last_layer_out.mean() if last_layer_out.mean()>=0.1 else last_layer_out>0.1).type(last_layer_out.dtype)
+        # convmask =  torch.sigmoid(convmask)
+        #! 此处用以补充转换关系，直接将预测的dbz转换为降水
+
+        #convmask =  last_layer_out
+        #convmask =  last_state_list[0][0]
+        #convmask =  (torch.sigmoid(last_layer_out-0.5)>=0.5).type(torch.int32)   #将此值作为mask
         #print(type(last_state_list))
         #try:
-        #    out = self.linear(last_state_list[0][0].view(-1).unsqueeze(0))
+            #out = self.linear(last_state_list[0][0].view(-1).unsqueeze(0))
+        #    out = self.linear(last_layer_out.reshape(-1).unsqueeze(0))
         #except:
-        #    out = self.linear(last_state_list[0][0].view(-1).unsqueeze(1))
+        #    out = self.linear(last_layer_out.reshape(-1).unsqueeze(1))
         #out = out.view(-1,1,240,240)
         #print("out.shape:",out.shape)
         #return layer_output_list, out
-
-        return layer_output_list, last_state_list[0][0]
+        # return last_state_list, convmask, last_layer_out*convmask    # 最终输出值除以mask
+        return layer_output_list, convmask ,last_layer_out*convmask    # 最终输出值除以mask
+        # return output
+        #return layer_output_list, convmask, last_layer_out*convmask    # 最终输出值除以mask
+        #return out, convmask, out*(convmask>= 0.1).type(torch.float32)    # 最终输出值除以mask
+        #return layer_output_list, last_state_list[0][0]
 
     def _init_hidden(self, batch_size, image_size):
         init_states = []
@@ -219,7 +243,7 @@ class Decoder(nn.Module):
 
 
 def main():
-    x = torch.rand((16, 10, 1, 128, 128))
+    x = torch.rand((16, 7, 1, 128, 128))
     convlstm = ConvLSTM(1, 1, (3, 3), 1, False, True, False)
     out, last_states = convlstm(x)
     h = last_states[0][0]  # 0 for layer index, 0 for h index
