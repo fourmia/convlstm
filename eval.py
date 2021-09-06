@@ -10,24 +10,8 @@ import torch
 import numpy as np
 import torch.nn.functional as F
 from tqdm import tqdm
-from torch.nn.modules.loss import _Loss
-class myloss(_Loss):
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, y_pred: torch.Tensor, y_true: torch.Tensor, w:torch.Tensor) -> torch.Tensor:
-        loss = (w*torch.abs(y_pred-y_true)).sum() / w.sum()
-        return loss
-
-def calculate_wgrid(real_grid_device, bins = np.arange(0.0, 20, 0.01)):
-    real_grid = real_grid_device.detach().cpu().numpy()
-    real_bins_index = np.digitize(real_grid,bins)
-    real_frequency = [(len(real_bins_index.reshape(-1)) - len(real_bins_index[real_bins_index== i+1])) for i in range(len(bins))]
-    for i in range(len(real_frequency)):
-        real_bins_index[real_bins_index==i+1]=real_frequency[i]
-    w= real_bins_index * np.piecewise(real_grid, [real_grid<0.1, real_grid>=0.1], [0, 1])
-    return torch.from_numpy(w.astype('float32')/w.max())
+# from torch.nn.modules.loss import _Loss
+from loss import myloss, calculate_wgrid
 
 
 def eval_net(net, loader, device):
@@ -48,14 +32,14 @@ def eval_net(net, loader, device):
             true_masks = true_masks.to(device=device, dtype=mask_type)
 
             with torch.no_grad():
-                _,mask_pred__ = net(imgs)
-                mask_pred = mask_pred__
+                mask_pred__, conv_mask, output = net(imgs)
+                mask_pred = mask_pred__[0][:,-1,...]
 
                 #pred = torch.sigmoid(mask_pred)
                 #pred = (pred > 0.).float()
                 #tot += dice_coeff(pred, true_masks).item()
             w = calculate_wgrid(true_masks)
-            tot += myloss()(mask_pred, true_masks, w.to(device)).item()
+            tot += myloss()(mask_pred, true_masks, w.to(device), conv_mask).item()
             pbar.update()
 
     net.train()
