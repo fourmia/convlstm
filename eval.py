@@ -14,7 +14,7 @@ from tqdm import tqdm
 from loss import myloss, calculate_wgrid
 
 
-def eval_net(net, loader, device):
+def eval_net(epoch, net, loader, device):
     """Evaluation without the densecrf with the dice coefficient"""
     net.eval()
     mask_type = torch.float32
@@ -39,7 +39,7 @@ def eval_net(net, loader, device):
                 #pred = (pred > 0.).float()
                 #tot += dice_coeff(pred, true_masks).item()
             w = calculate_wgrid(true_masks)
-            tot += myloss()(mask_pred, true_masks, w.to(device), conv_mask).item()
+            tot += myloss()(epoch, mask_pred, true_masks, w.to(device), conv_mask).item()
             pbar.update()
 
     net.train()
